@@ -2085,6 +2085,18 @@ jint Arguments::set_aggressive_opts_flags() {
   }
 #endif
 
+  if(UnlockExperimentalVMOptions){
+    if (AggressiveSerializer) {
+      char buffer[1024];
+      jio_snprintf(buffer, 1024, "java.io.ObjectOutputStream.AggressiveSerializer=" INTX_FORMAT, 1);
+      add_property(buffer);
+    }else{
+      char buffer[1024];
+      jio_snprintf(buffer, 1024, "java.io.ObjectOutputStream.AggressiveSerializer=" INTX_FORMAT, 0);
+      add_property(buffer);
+    }
+  }
+
   return JNI_OK;
 }
 

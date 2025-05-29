@@ -39,6 +39,11 @@ public interface ObjectStreamConstants {
     static final short STREAM_MAGIC = (short)0xaced;
 
     /**
+     * use for aggressive serialization
+     */
+    final static short STREAM_MAGIC_AGGRESSIVE = (short)0xdeca;
+
+    /**
      * Version number that is written to the stream header.
      */
     static final short STREAM_VERSION = 5;

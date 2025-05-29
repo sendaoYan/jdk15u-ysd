@@ -44,6 +44,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.lang.ref.SoftReference;
 
 import static java.io.ObjectStreamClass.processQueue;
 
@@ -268,6 +269,12 @@ import sun.security.action.GetIntegerAction;
 public class ObjectInputStream
     extends InputStream implements ObjectInput, ObjectStreamConstants
 {
+
+    private static boolean useAggressiveSerializer = false;
+
+    /** use for aggressive serialization */
+    protected static ConcurrentHashMap<String,SoftReference<Class<?>>> classesCache = new ConcurrentHashMap<>();
+
     /** handle value representing null */
     private static final int NULL_HANDLE = -1;
 
@@ -778,16 +785,35 @@ public class ObjectInputStream
         throws IOException, ClassNotFoundException
     {
         String name = desc.getName();
-        try {
-            return Class.forName(name, false, latestUserDefinedLoader());
-        } catch (ClassNotFoundException ex) {
-            Class<?> cl = primClasses.get(name);
-            if (cl != null) {
+
+        SoftReference<Class<?>> sr = null;
+        Class<?> cl = null;
+
+        if (useAggressiveSerializer) {
+            sr = classesCache.get(name);
+            if (sr == null || (cl = sr.get()) == null) {
+                // nothing
+            }else{
                 return cl;
-            } else {
+            }
+        }
+
+        try {
+            cl = Class.forName(name, false, latestUserDefinedLoader());
+        } catch (ClassNotFoundException ex) {
+            cl = primClasses.get(name);
+            if (cl == null) {
                 throw ex;
             }
         }
+
+
+        if (useAggressiveSerializer) {
+            SoftReference<Class<?>> softReference = new SoftReference<>(cl);
+            classesCache.put(name, softReference);
+        }
+
+        return cl;
     }
 
     /**
@@ -961,9 +987,16 @@ public class ObjectInputStream
     {
         short s0 = bin.readShort();
         short s1 = bin.readShort();
-        if (s0 != STREAM_MAGIC || s1 != STREAM_VERSION) {
+
+        if (s0 == STREAM_MAGIC_AGGRESSIVE) {
+            useAggressiveSerializer = true;
+        } else if (s0 == STREAM_MAGIC) {
+            useAggressiveSerializer = false;
+        }
+
+        if ((s0 != STREAM_MAGIC && s0 != STREAM_MAGIC_AGGRESSIVE) || s1 != STREAM_VERSION) {
             throw new StreamCorruptedException(
-                String.format("invalid stream header: %04X%04X", s0, s1));
+                    String.format("invalid stream header: %04X%04X", s0, s1));
         }
     }
 
@@ -987,6 +1020,25 @@ public class ObjectInputStream
     protected ObjectStreamClass readClassDescriptor()
         throws IOException, ClassNotFoundException
     {
+        if (useAggressiveSerializer) {
+            String name = readUTF();
+            Class<?> cl = null;
+            ObjectStreamClass desc = new ObjectStreamClass(name);
+            try {
+                // In order to match this method, we add an annotateClass method in
+                // writeClassDescriptor.
+                cl = resolveClass(desc);
+            } catch (ClassNotFoundException ex) {
+                // resolveClass is just used to obtain Class which required by lookup method
+                // and it will be called again later, so we don't throw ClassNotFoundException here.
+                return desc;
+            }
+            if (cl != null) {
+                desc = ObjectStreamClass.lookup(cl, true);
+            }
+            return desc;
+        }
+
         ObjectStreamClass desc = new ObjectStreamClass();
         desc.readNonProxy(this);
         return desc;
@@ -2041,36 +2093,52 @@ public class ObjectInputStream
 
         skipCustomData();
 
-        try {
-            totalObjectRefs++;
-            depth++;
-            desc.initNonProxy(readDesc, cl, resolveEx, readClassDesc(false));
+        totalObjectRefs++;
+        depth++;
 
-            if (cl != null) {
-                // Check that serial filtering has been done on the local class descriptor's superclass,
-                // in case it does not appear in the stream.
+        if (useAggressiveSerializer) {
+            desc.initNonProxyAggressive(readDesc, resolveEx);
+            ObjectStreamClass superDesc = desc.getSuperDesc();
+            long originDepth = depth - 1;
+            // Since desc is obtained from the lookup method, we will lose the depth and
+            // totalObjectRefs of superDesc. So we add a loop here to compute the depth
+            // and objectRef of superDesc.
+            while (superDesc != null && superDesc.forClass() != null) {
+                filterCheck(superDesc.forClass(), -1);
+                superDesc = superDesc.getSuperDesc();
+                totalObjectRefs++;
+                depth++;
+            }
+            depth = originDepth;
+        } else {
+            try {
+                desc.initNonProxy(readDesc, cl, resolveEx, readClassDesc(false));
 
-                // Find the next super descriptor that has a local class descriptor.
-                // Descriptors for which there is no local class are ignored.
-                ObjectStreamClass superLocal = null;
-                for (ObjectStreamClass sDesc = desc.getSuperDesc(); sDesc != null; sDesc = sDesc.getSuperDesc()) {
-                    if ((superLocal = sDesc.getLocalDesc()) != null) {
-                        break;
+                if (cl != null) {
+                    // Check that serial filtering has been done on the local class descriptor's superclass,
+                    // in case it does not appear in the stream.
+                    // Find the next super descriptor that has a local class descriptor.
+                    // Descriptors for which there is no local class are ignored.
+                    ObjectStreamClass superLocal = null;
+                    for (ObjectStreamClass sDesc = desc.getSuperDesc(); sDesc != null; sDesc = sDesc.getSuperDesc()) {
+                        if ((superLocal = sDesc.getLocalDesc()) != null) {
+                            break;
+                        }
+                    }
+
+                    // Scan local descriptor superclasses for a match with the local descriptor of the super found above.
+                    // For each super descriptor before the match, invoke the serial filter on the class.
+                    // The filter is invoked for each class that has not already been filtered
+                    // but would be filtered if the instance had been serialized by this Java runtime.
+                    for (ObjectStreamClass lDesc = desc.getLocalDesc().getSuperDesc();
+                         lDesc != null && lDesc != superLocal;
+                         lDesc = lDesc.getSuperDesc()) {
+                        filterCheck(lDesc.forClass(), -1);
                     }
                 }
-
-                // Scan local descriptor superclasses for a match with the local descriptor of the super found above.
-                // For each super descriptor before the match, invoke the serial filter on the class.
-                // The filter is invoked for each class that has not already been filtered
-                // but would be filtered if the instance had been serialized by this Java runtime.
-                for (ObjectStreamClass lDesc = desc.getLocalDesc().getSuperDesc();
-                     lDesc != null && lDesc != superLocal;
-                     lDesc = lDesc.getSuperDesc()) {
-                    filterCheck(lDesc.forClass(), -1);
-                }
+            } finally {
+                depth--;
             }
-        } finally {
-            depth--;
         }
 
         handles.finish(descHandle);

@@ -1193,6 +1193,10 @@ const size_t minimumSymbolTableSize = 1024;
   product_pd(bool, CompactStrings,                                          \
           "Enable Strings to use single byte chars in backing store")       \
                                                                             \
+                                                                            \
+  product(bool, AggressiveSerializer, false,                                \
+          "Enable the aggressive serialization optimization")               \
+                                                                            \
   product_pd(uintx, TypeProfileLevel,                                       \
           "=XYZ, with Z: Type profiling of arguments at call; "             \
                      "Y: Type profiling of return value at call; "          \

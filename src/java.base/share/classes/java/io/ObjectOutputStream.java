@@ -178,6 +178,21 @@ public class ObjectOutputStream
             new ReferenceQueue<>();
     }
 
+    private static boolean useAggressiveSerializer = false;
+
+    static {
+        String h = jdk.internal.misc.VM.getSavedProperty("java.io.ObjectOutputStream.AggressiveSerializer");
+        if (h != null) {
+            try {
+                int i = Integer.parseInt(h);
+                useAggressiveSerializer = i == 1 ? true : false;
+            } catch (NumberFormatException nfe) {
+                useAggressiveSerializer = false;
+            }
+        }
+    }
+
+
     /** filter stream for handling block data conversion */
     private final BlockDataOutputStream bout;
     /** obj -> wire handle map */
@@ -640,7 +655,11 @@ public class ObjectOutputStream
      *          stream
      */
     protected void writeStreamHeader() throws IOException {
-        bout.writeShort(STREAM_MAGIC);
+        if (useAggressiveSerializer) {
+            bout.writeShort(STREAM_MAGIC_AGGRESSIVE);
+        } else {
+            bout.writeShort(STREAM_MAGIC);
+        }
         bout.writeShort(STREAM_VERSION);
     }
 
@@ -672,7 +691,12 @@ public class ObjectOutputStream
     protected void writeClassDescriptor(ObjectStreamClass desc)
         throws IOException
     {
-        desc.writeNonProxy(this);
+        if (useAggressiveSerializer) {
+            writeUTF(desc.getName());
+            annotateClass(desc.forClass());
+        } else {
+            desc.writeNonProxy(this);
+        }
     }
 
     /**
@@ -1286,7 +1310,12 @@ public class ObjectOutputStream
 
         if (protocol == PROTOCOL_VERSION_1) {
             // do not invoke class descriptor write hook with old protocol
-            desc.writeNonProxy(this);
+            if (useAggressiveSerializer) {
+                writeUTF(desc.getName());
+                annotateClass(desc.forClass());
+            } else {
+                desc.writeNonProxy(this);
+            }
         } else {
             writeClassDescriptor(desc);
         }
@@ -1300,7 +1329,9 @@ public class ObjectOutputStream
         bout.setBlockDataMode(false);
         bout.writeByte(TC_ENDBLOCKDATA);
 
-        writeClassDesc(desc.getSuperDesc(), false);
+        if (!useAggressiveSerializer) {
+            writeClassDesc(desc.getSuperDesc(), false);
+        }
     }
 
     /**

@@ -244,6 +244,44 @@ public class ObjectStreamClass implements Serializable {
         return lookup(cl, false);
     }
 
+    ObjectStreamClass(String name) {
+        this.name  = name;
+    }
+
+    void initNonProxyAggressive(ObjectStreamClass model,
+                          ClassNotFoundException resolveEx)
+    {
+        this.cl = model.cl;
+        this.resolveEx = resolveEx;
+        this.superDesc = model.superDesc;
+        name = model.name;
+        this.suid = model.suid;
+        isProxy = false;
+        isEnum = model.isEnum;
+        serializable = model.serializable;
+        externalizable = model.externalizable;
+        hasBlockExternalData = model.hasBlockExternalData;
+        hasWriteObjectData = model.hasWriteObjectData;
+        fields = model.fields;
+        primDataSize = model.primDataSize;
+        numObjFields = model.numObjFields;
+
+        writeObjectMethod = model.writeObjectMethod;
+        readObjectMethod = model.readObjectMethod;
+        readObjectNoDataMethod = model.readObjectNoDataMethod;
+        writeReplaceMethod = model.writeReplaceMethod;
+        readResolveMethod = model.readResolveMethod;
+        if (deserializeEx == null) {
+            deserializeEx = model.deserializeEx;
+        }
+        domains = model.domains;
+        cons = model.cons;
+        fieldRefl = model.fieldRefl;
+        localDesc = model;
+
+        initialized = true;
+    }
+
     /**
      * Returns the descriptor for any class, regardless of whether it
      * implements {@link Serializable}.
