@@ -78,6 +78,9 @@ class compiledVFrame: public javaVFrame {
   // Returns SynchronizationEntryBCI or bci() (used for synchronization)
   int raw_bci() const;
 
+  // Used by stack allocation to match a stack oop to a described stack allocated object
+  ScopeValue *match_object_to_stack_oop(intptr_t *oop_ptr, intptr_t *sp_base, GrowableArray<ScopeValue*>* objects) const;
+
  protected:
   ScopeDesc* _scope;
   int _vframe_id;
@@ -85,6 +88,7 @@ class compiledVFrame: public javaVFrame {
   //StackValue resolve(ScopeValue* sv) const;
   BasicLock* resolve_monitor_lock(Location location) const;
   StackValue *create_stack_value(ScopeValue *sv) const;
+  ScopeValue *get_scope_value(GrowableArray<ScopeValue*>*  scv_list, int index, GrowableArray<ScopeValue*>* objects) const;
 
  private:
   compiledVFrame(const frame* fr, const RegisterMap* reg_map, JavaThread* thread, ScopeDesc* scope, int vframe_id);

@@ -88,6 +88,8 @@ protected:
   virtual bool is_gc_barrier_node(Node* node) const;
   virtual void eliminate_gc_barrier(PhaseMacroExpand* macro, Node* node) const;
   virtual Node* step_over_gc_barrier(Node* c) const;
+  virtual bool process_barrier_node(Node* cast_node, PhaseIterGVN& igvn) const;
+
 
 #ifdef ASSERT
   virtual void verify_gc_barriers(Compile* compile, CompilePhase phase) const;

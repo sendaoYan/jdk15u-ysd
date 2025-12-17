@@ -26,6 +26,7 @@
 #include "code/nmethod.hpp"
 #include "memory/iterator.inline.hpp"
 #include "oops/oop.inline.hpp"
+#include "runtime/fieldDescriptor.inline.hpp"
 #include "utilities/debug.hpp"
 #include "utilities/globalDefinitions.hpp"
 

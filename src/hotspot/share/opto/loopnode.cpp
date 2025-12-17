@@ -3914,7 +3914,7 @@ int PhaseIdealLoop::build_loop_tree_impl( Node *n, int pre_order ) {
               (iff->as_If()->_prob >= 0.01) )
             innermost->_has_call = 1;
         }
-      } else if( n->is_Allocate() && n->as_Allocate()->_is_scalar_replaceable ) {
+      } else if( n->is_Allocate() && (n->as_Allocate()->_is_scalar_replaceable || n->as_Allocate()->_is_stack_allocateable) ) {
         // Disable loop optimizations if the loop has a scalar replaceable
         // allocation. This disabling may cause a potential performance lost
         // if the allocation is not eliminated for some reason.

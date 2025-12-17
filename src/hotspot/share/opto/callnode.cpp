@@ -485,25 +485,44 @@ void JVMState::format(PhaseRegAlloc *regalloc, const Node *n, outputStream* st) 
       uint nf = spobj->n_fields();
       if (nf > 0) {
         uint first_ind = spobj->first_index(mcall->jvms());
-        Node* fld_node = mcall->in(first_ind);
+        Node* fld_node = NULL;
         ciField* cifield;
         if (iklass != NULL) {
           st->print(" [");
           cifield = iklass->nonstatic_field_at(0);
           cifield->print_name_on(st);
-          format_helper(regalloc, st, fld_node, ":", 0, &scobjs);
+          if(spobj->stack_allocated()) {
+            st->print(":*0]");
+          } else {
+            fld_node = mcall->in(first_ind);
+            format_helper(regalloc, st, fld_node, ":", 0, &scobjs);
+          }
         } else {
-          format_helper(regalloc, st, fld_node, "[", 0, &scobjs);
+          if(spobj->stack_allocated()) {
+            st->print("[*0]");
+          } else {
+            fld_node = mcall->in(first_ind);
+            format_helper(regalloc, st, fld_node, "[", 0, &scobjs);
+          }
         }
         for (uint j = 1; j < nf; j++) {
-          fld_node = mcall->in(first_ind+j);
           if (iklass != NULL) {
             st->print(", [");
             cifield = iklass->nonstatic_field_at(j);
             cifield->print_name_on(st);
-            format_helper(regalloc, st, fld_node, ":", j, &scobjs);
+            if(spobj->stack_allocated()) {
+              st->print(":*%d]", j);
+            } else {
+              fld_node = mcall->in(first_ind+j);
+              format_helper(regalloc, st, fld_node, ":", j, &scobjs);
+            }
           } else {
-            format_helper(regalloc, st, fld_node, ", [", j, &scobjs);
+            if(spobj->stack_allocated()) {
+              st->print(", [*%d]", j);
+            } else {
+              fld_node = mcall->in(first_ind+j);
+              format_helper(regalloc, st, fld_node, ", [", j, &scobjs);
+            }
           }
         }
       }
@@ -961,6 +980,13 @@ bool CallNode::is_call_to_arraycopystub() const {
   return false;
 }
 
+bool CallNode::is_call_to_osr_migration_end() const {
+  if (_name != NULL && strstr(_name, "OSR_migration_end") != 0) {
+    return true;
+  }
+  return false;
+}
+
 //=============================================================================
 uint CallJavaNode::size_of() const { return sizeof(*this); }
 bool CallJavaNode::cmp( const Node &n ) const {
@@ -1302,7 +1328,8 @@ SafePointScalarObjectNode::SafePointScalarObjectNode(const TypeOopPtr* tp,
                                                      uint n_fields) :
   TypeNode(tp, 1), // 1 control input -- seems required.  Get from root.
   _first_index(first_index),
-  _n_fields(n_fields)
+  _n_fields(n_fields),
+  _is_stack_allocated(false)
 #ifdef ASSERT
   , _alloc(alloc)
 #endif
@@ -1364,6 +1391,8 @@ AllocateNode::AllocateNode(Compile* C, const TypeFunc *atype,
   init_flags(Flag_is_macro);
   _is_scalar_replaceable = false;
   _is_non_escaping = false;
+  _is_stack_allocateable = false;
+  _is_referenced_stack_allocation = false;
   _is_allocation_MemBar_redundant = false;
   Node *topnode = C->top();
 

@@ -535,6 +535,15 @@
           "Array size (number of elements) limit for scalar replacement")   \
           range(0, max_jint)                                                \
                                                                             \
+  experimental(bool, UseStackAllocation, false,                             \
+          "Leverage stack allocation to reduce heap pressure")              \
+                                                                            \
+  experimental(bool, UseStackAllocationRuntime, false,                      \
+          "Enable the stack allocation runtime code in oopmap")             \
+                                                                            \
+  notproduct(bool, PrintStackAllocation, false,                             \
+          "Print stack allocation debug information")                       \
+                                                                            \
   product(bool, OptimizePtrCompare, true,                                   \
           "Use escape analysis to optimize pointers compare")               \
                                                                             \

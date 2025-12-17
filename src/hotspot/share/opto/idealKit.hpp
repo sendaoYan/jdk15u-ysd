@@ -127,6 +127,10 @@ class IdealKit: public StackObj {
     return (n->is_Phi() && n->in(0) == reg);
   }
   void declare(IdealVariable* v) { v->set_id(_var_ct++); }
+
+  void if_then_common(Node* bol, float prob = PROB_FAIR, float cnt = COUNT_UNKNOWN,
+                      bool push_new_state = true);
+
   // This declares the position where vars are kept in the cvstate
   // For some degree of consistency we use the TypeFunc enum to
   // soak up spots in the inputs even though we only use early Control
@@ -163,6 +167,9 @@ class IdealKit: public StackObj {
   void if_then(Node* left, BoolTest::mask relop, Node* right,
                float prob = PROB_FAIR, float cnt = COUNT_UNKNOWN,
                bool push_new_state = true);
+  void uif_then(Node* left, BoolTest::mask relop, Node* right,
+               float prob = PROB_FAIR, float cnt = COUNT_UNKNOWN,
+               bool push_new_state = true);
   void else_();
   void end_if();
   void loop(GraphKit* gkit, int nargs, IdealVariable& iv, Node* init, BoolTest::mask cmp, Node* limit,
@@ -182,16 +189,19 @@ class IdealKit: public StackObj {
 
   Node* AddI(Node* l, Node* r) { return transform(new AddINode(l, r)); }
   Node* SubI(Node* l, Node* r) { return transform(new SubINode(l, r)); }
+  Node* SubL(Node* l, Node* r) { return transform(new SubLNode(l, r)); }
   Node* AndI(Node* l, Node* r) { return transform(new AndINode(l, r)); }
   Node* OrI(Node* l, Node* r)  { return transform(new OrINode(l, r));  }
   Node* MaxI(Node* l, Node* r) { return transform(new MaxINode(l, r)); }
   Node* LShiftI(Node* l, Node* r) { return transform(new LShiftINode(l, r)); }
   Node* CmpI(Node* l, Node* r) { return transform(new CmpINode(l, r)); }
+  Node* CmpU(Node* l, Node* r) { return transform(new CmpUNode(l, r)); }
   Node* Bool(Node* cmp, BoolTest::mask relop) { return transform(new BoolNode(cmp, relop)); }
   void  increment(IdealVariable& v, Node* j)  { set(v, AddI(value(v), j)); }
   void  decrement(IdealVariable& v, Node* j)  { set(v, SubI(value(v), j)); }
 
   Node* CmpL(Node* l, Node* r) { return transform(new CmpLNode(l, r)); }
+  Node* CmpUL(Node* l, Node* r) { return transform(new CmpULNode(l, r)); }
 
   // TLS
   Node* thread()  {  return gvn().transform(new ThreadLocalNode()); }

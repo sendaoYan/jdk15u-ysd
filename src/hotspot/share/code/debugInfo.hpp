@@ -145,8 +145,10 @@ class ObjectValue: public ScopeValue {
   void                        set_value(oop value);
   void                        set_visited(bool visited) { _visited = false; }
 
+  virtual bool                is_stack_object()         { return false; }
+
   // Serialization of debugging information
-  void read_object(DebugInfoReadStream* stream);
+  virtual void read_object(DebugInfoReadStream* stream);
   void write_on(DebugInfoWriteStream* stream);
 
   // Printing
@@ -184,6 +186,25 @@ class ConstantIntValue: public ScopeValue {
   // Printing
   void print_on(outputStream* st) const;
 };
+
+class StackObjectValue: public ObjectValue {
+private:
+  Location    _location;
+  ConstantIntValue *_field_length;
+public:
+  StackObjectValue(int id, ScopeValue* klass, Location location, ConstantIntValue *field_length);
+  StackObjectValue(int id) : ObjectValue(id), _location(), _field_length(NULL) { }
+
+  Location get_stack_location() { return _location; }
+  ConstantIntValue* get_field_length() { return _field_length; }
+
+  bool is_stack_object(){ return true; }
+
+    // Serialization of debugging information
+  void read_object(DebugInfoReadStream* stream);
+  void write_on(DebugInfoWriteStream* stream);
+};
+
 
 class ConstantLongValue: public ScopeValue {
  private:
@@ -304,7 +325,7 @@ class DebugInfoReadStream : public CompressedReadStream {
     assert(o == NULL || o->is_metadata(), "meta data only");
     return o;
   }
-  ScopeValue* read_object_value(bool is_auto_box);
+  ScopeValue* read_object_value(int type);
   ScopeValue* get_cached_object();
   // BCI encoding is mostly unsigned, but -1 is a distinguished value
   int read_bci() { return read_int() + InvocationEntryBci; }

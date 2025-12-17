@@ -522,6 +522,15 @@ void CompilerConfig::ergo_initialize() {
     // blind guess
     LoopStripMiningIterShortLoop = LoopStripMiningIter / 10;
   }
+  if (UseStackAllocation) {
+    if (!(UseSerialGC || UseParallelGC || UseG1GC)) {
+      vm_exit_during_initialization("UseStackAllocation is not supported with selected GC", GCConfig::hs_err_name());
+      FLAG_SET_DEFAULT(UseStackAllocation, false);
+      FLAG_SET_ERGO(UseStackAllocationRuntime, false);
+    } else {
+      FLAG_SET_ERGO(UseStackAllocationRuntime, true);
+    }
+  }
 #endif // COMPILER2
 }
 

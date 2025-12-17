@@ -64,6 +64,30 @@ void IdealKit::sync_kit(GraphKit* gkit) {
   set_ctrl(gkit->control());
 }
 
+//-------------------------------uif_then-------------------------------------
+// Create: unsigned if(left relop right)
+//          /  \
+//   iffalse    iftrue
+// Push the iffalse cvstate onto the stack. The iftrue becomes the current cvstate.
+void IdealKit::uif_then(Node* left, BoolTest::mask relop,
+                       Node* right, float prob, float cnt, bool push_new_state) {
+  assert((state() & (BlockS|LoopS|IfThenS|ElseS)), "bad state for new If");
+  Node* bol;
+  if (left->bottom_type()->isa_ptr() == NULL) {
+    if (left->bottom_type()->isa_int() != NULL) {
+      bol = Bool(CmpU(left, right), relop);
+    } else {
+      assert(left->bottom_type()->isa_long() != NULL, "what else?");
+      bol = Bool(CmpUL(left, right), relop);
+    }
+
+  } else {
+    bol = Bool(CmpP(left, right), relop);
+  }
+
+  if_then_common(bol, prob, cnt, push_new_state);
+}
+
 //-------------------------------if_then-------------------------------------
 // Create:  if(left relop right)
 //          /  \
@@ -84,6 +108,13 @@ void IdealKit::if_then(Node* left, BoolTest::mask relop,
   } else {
     bol = Bool(CmpP(left, right), relop);
   }
+
+  if_then_common(bol, prob, cnt, push_new_state);
+}
+
+// Common helper to create the If nodes for if_then and uif_then
+void IdealKit::if_then_common(Node* bol, float prob, float cnt,
+                              bool push_new_state) {
   // Delay gvn.tranform on if-nodes until construction is finished
   // to prevent a constant bool input from discarding a control output.
   IfNode* iff = delay_transform(new IfNode(ctrl(), bol, prob, cnt))->as_If();

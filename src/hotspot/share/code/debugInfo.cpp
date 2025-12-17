@@ -64,7 +64,13 @@ oop DebugInfoReadStream::read_oop() {
   return o;
 }
 
-ScopeValue* DebugInfoReadStream::read_object_value(bool is_auto_box) {
+enum { LOCATION_CODE = 0, CONSTANT_INT_CODE = 1,  CONSTANT_OOP_CODE = 2,
+                          CONSTANT_LONG_CODE = 3, CONSTANT_DOUBLE_CODE = 4,
+                          OBJECT_CODE = 5,        OBJECT_ID_CODE = 6,
+                          AUTO_BOX_OBJECT_CODE = 7, MARKER_CODE = 8,
+                          STACK_OBJECT_CODE = 9 };
+
+ScopeValue* DebugInfoReadStream::read_object_value(int type) {
   int id = read_int();
 #ifdef ASSERT
   assert(_obj_pool != NULL, "object pool does not exist");
@@ -72,7 +78,15 @@ ScopeValue* DebugInfoReadStream::read_object_value(bool is_auto_box) {
     assert(_obj_pool->at(i)->as_ObjectValue()->id() != id, "should not be read twice");
   }
 #endif
-  ObjectValue* result = is_auto_box ? new AutoBoxObjectValue(id) : new ObjectValue(id);
+  ObjectValue* result;
+  if (type == AUTO_BOX_OBJECT_CODE) {
+    result = new AutoBoxObjectValue(id);
+  } else if (type == STACK_OBJECT_CODE) {
+    result = new StackObjectValue(id);
+  } else {
+    assert(type == OBJECT_CODE, "has to be an object");
+    result = new ObjectValue(id);
+  }
   // Cache the object since an object field could reference it.
   _obj_pool->push(result);
   result->read_object(this);
@@ -94,11 +108,6 @@ ScopeValue* DebugInfoReadStream::get_cached_object() {
 
 // Serializing scope values
 
-enum { LOCATION_CODE = 0, CONSTANT_INT_CODE = 1,  CONSTANT_OOP_CODE = 2,
-                          CONSTANT_LONG_CODE = 3, CONSTANT_DOUBLE_CODE = 4,
-                          OBJECT_CODE = 5,        OBJECT_ID_CODE = 6,
-                          AUTO_BOX_OBJECT_CODE = 7, MARKER_CODE = 8 };
-
 ScopeValue* ScopeValue::read_from(DebugInfoReadStream* stream) {
   ScopeValue* result = NULL;
   switch(stream->read_int()) {
@@ -107,8 +116,9 @@ ScopeValue* ScopeValue::read_from(DebugInfoReadStream* stream) {
    case CONSTANT_OOP_CODE:    result = new ConstantOopReadValue(stream);                 break;
    case CONSTANT_LONG_CODE:   result = new ConstantLongValue(stream);                    break;
    case CONSTANT_DOUBLE_CODE: result = new ConstantDoubleValue(stream);                  break;
-   case OBJECT_CODE:          result = stream->read_object_value(false /*is_auto_box*/); break;
-   case AUTO_BOX_OBJECT_CODE: result = stream->read_object_value(true /*is_auto_box*/);  break;
+   case OBJECT_CODE:          result = stream->read_object_value(OBJECT_CODE);           break;
+   case AUTO_BOX_OBJECT_CODE: result = stream->read_object_value(AUTO_BOX_OBJECT_CODE);  break;
+   case STACK_OBJECT_CODE:    result = stream->read_object_value(STACK_OBJECT_CODE);     break;
    case OBJECT_ID_CODE:       result = stream->get_cached_object();                      break;
    case MARKER_CODE:          result = new MarkerValue();                                break;
    default: ShouldNotReachHere();
@@ -188,6 +198,40 @@ void ObjectValue::print_fields_on(outputStream* st) const {
     _field_values.at(i)->print_on(st);
   }
 #endif
+}
+
+// StackObjectValue
+
+StackObjectValue::StackObjectValue(int id, ScopeValue* klass, Location location, ConstantIntValue *field_length)
+: ObjectValue(id, klass)
+, _location(location)
+, _field_length(field_length)
+{
+}
+
+void StackObjectValue::read_object(DebugInfoReadStream* stream) {
+  ObjectValue::read_object(stream);
+  _location = Location(stream);
+  _field_length = (ConstantIntValue *)read_from(stream);
+}
+
+void StackObjectValue::write_on(DebugInfoWriteStream* stream) {
+  if (_visited) {
+    stream->write_int(OBJECT_ID_CODE);
+    stream->write_int(_id);
+  } else {
+    _visited = true;
+    stream->write_int(STACK_OBJECT_CODE);
+    stream->write_int(_id);
+    _klass->write_on(stream);
+    int length = _field_values.length();
+    stream->write_int(length);
+    for (int i = 0; i < length; i++) {
+      _field_values.at(i)->write_on(stream);
+    }
+    _location.write_on(stream);
+    _field_length->write_on(stream);
+  }
 }
 
 // ConstantIntValue

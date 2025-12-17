@@ -188,7 +188,10 @@ Node *MemNode::optimize_simple_memory_chain(Node *mchain, const TypeOopPtr *t_oo
         assert(false, "unexpected projection");
       }
     } else if (result->is_ClearArray()) {
-      if (!is_instance || !ClearArrayNode::step_through(&result, instance_id, phase)) {
+      intptr_t offset;
+      AllocateNode* alloc = AllocateNode::Ideal_allocation(result->in(3), phase, offset);
+
+      if (!is_instance || (alloc == NULL) || !ClearArrayNode::step_through(&result, instance_id, phase)) {
         // Can not bypass initialization of the instance
         // we are looking for.
         break;
@@ -708,7 +711,10 @@ Node* MemNode::find_previous_store(PhaseTransform* phase) {
         mem = mem->in(0)->in(TypeFunc::Memory);
         continue;           // (a) advance through independent MemBar memory
       } else if (mem->is_ClearArray()) {
-        if (ClearArrayNode::step_through(&mem, (uint)addr_t->instance_id(), phase)) {
+        intptr_t offset;
+        AllocateNode* alloc = AllocateNode::Ideal_allocation(mem->in(3), phase, offset);
+
+        if ((alloc != NULL) && ClearArrayNode::step_through(&mem, (uint)addr_t->instance_id(), phase)) {
           // (the call updated 'mem' value)
           continue;         // (a) advance through independent allocation memory
         } else {

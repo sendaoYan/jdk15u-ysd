@@ -248,6 +248,8 @@ public:
   // before the beginning of the actual _byte_map.
   CardValue* byte_map_base() const { return _byte_map_base; }
   bool scanned_concurrently() const { return _scanned_concurrently; }
+  size_t byte_map_top_offset() const { return uintptr_t(_whole_heap.end()); }
+  size_t byte_map_bottom_offset() const { return uintptr_t(_whole_heap.start()); }
 
   virtual bool is_in_young(oop obj) const = 0;
 

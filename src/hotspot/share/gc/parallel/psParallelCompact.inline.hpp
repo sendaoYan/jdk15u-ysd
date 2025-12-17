@@ -114,11 +114,11 @@ inline void PSParallelCompact::adjust_pointer(T* p, ParCompactionManager* cm) {
 
     oop new_obj = (oop)summary_data().calc_new_pointer(obj, cm);
     assert(new_obj != NULL,                    // is forwarding ptr?
-           "should be forwarded");
+          "should be forwarded");
     // Just always do the update unconditionally?
     if (new_obj != NULL) {
       assert(ParallelScavengeHeap::heap()->is_in_reserved(new_obj),
-             "should be in object space");
+            "should be in object space");
       RawAccess<IS_NOT_NULL>::oop_store(p, new_obj);
     }
   }

@@ -241,7 +241,8 @@ OopMap *OopFlow::build_oop_map( Node *n, int max_reg, PhaseRegAlloc *regalloc, i
 
     // Classify the reaching def as oop, derived, callee-save, dead, or other
     const Type *t = def->bottom_type();
-    if( t->isa_oop_ptr() ) {    // Oop or derived?
+    if( t->isa_oop_ptr() || // Oop or derived?
+       (C->do_stack_allocation() && t->isa_rawptr() && def->is_BoxLock())) {  // consider stack oops too
       assert( !OptoReg::is_valid(_callees[reg]), "oop can't be callee save" );
 #ifdef _LP64
       // 64-bit pointers record oop-ishness on 2 aligned adjacent registers.

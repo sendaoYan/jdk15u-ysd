@@ -913,6 +913,8 @@ void Compile::Init(int aliaslevel) {
   env()->set_dependencies(new Dependencies(env()));
 
   _fixed_slots = 0;
+  _stack_allocated_slots = 0;
+  set_fail_stack_allocation_with_references(false);
   set_has_split_ifs(false);
   set_has_loops(has_method() && method()->has_loops()); // first approximation
   set_has_stringbuilder(false);

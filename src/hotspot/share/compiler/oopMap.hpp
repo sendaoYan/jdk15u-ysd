@@ -199,10 +199,15 @@ class OopMap: public ResourceObj {
 
 class OopMapSet : public ResourceObj {
   friend class VMStructs;
+  friend class OopClosureWalker;
  private:
   GrowableArray<OopMap*> _list;
 
   void add(OopMap* value) { _list.append(value); }
+
+  static void stack_oop_do(oop *p, OopClosure* oop_fn,
+                      GrowableArray<oop> *stack_oops,
+                      intptr_t *stack_base, intptr_t *stack_top);
 
  public:
   OopMapSet();

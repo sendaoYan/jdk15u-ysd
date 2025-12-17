@@ -58,8 +58,9 @@ StackValueCollection* compiledVFrame::locals() const {
   // There is one scv_list entry for every JVM stack state in use.
   int length = scv_list->length();
   StackValueCollection* result = new StackValueCollection(length);
+  GrowableArray<ScopeValue*>* objects = scope()->objects();
   for (int i = 0; i < length; i++) {
-    result->add(create_stack_value(scv_list->at(i)));
+    result->add(create_stack_value(get_scope_value(scv_list, i, objects)));
   }
 
   // Replace the original values with any stores that have been
@@ -138,8 +139,9 @@ StackValueCollection* compiledVFrame::expressions() const {
   // There is one scv_list entry for every JVM stack state in use.
   int length = scv_list->length();
   StackValueCollection* result = new StackValueCollection(length);
+  GrowableArray<ScopeValue*>* objects = scope()->objects();
   for (int i = 0; i < length; i++) {
-    result->add(create_stack_value(scv_list->at(i)));
+    result->add(create_stack_value(get_scope_value(scv_list, i, objects)));
   }
 
   // Replace the original values with any stores that have been
@@ -169,6 +171,79 @@ StackValue *compiledVFrame::create_stack_value(ScopeValue *sv) const {
 
 BasicLock* compiledVFrame::resolve_monitor_lock(Location location) const {
   return StackValue::resolve_monitor_lock(&_fr, location);
+}
+
+ScopeValue *compiledVFrame::match_object_to_stack_oop(intptr_t *oop_ptr, intptr_t *sp_base, GrowableArray<ScopeValue*>* objects) const {
+  if (objects == NULL) {
+    return NULL;
+  }
+  for (int j = 0; j < objects->length(); j++) {
+    ScopeValue* o_sv = objects->at(j);
+    if (o_sv->is_object()) {
+      if (o_sv->as_ObjectValue()->is_stack_object()) {
+        StackObjectValue *sov = (StackObjectValue *)o_sv;
+        Location o_loc = sov->get_stack_location();
+        int o_offset = o_loc.stack_offset();
+        int l_offset = (address)oop_ptr - (address)sp_base;
+        if (o_offset == l_offset) {
+          return o_sv;
+        }
+      }
+    }
+  }
+
+  return NULL;
+}
+
+ScopeValue *compiledVFrame::get_scope_value(GrowableArray<ScopeValue*>* scv_list, int index, GrowableArray<ScopeValue*>* objects) const {
+  ScopeValue* sv = scv_list->at(index);
+  if (sv->is_location()) {
+    if ((objects != NULL) && (objects->length() > 0)) {
+      //printf("Attempting to swap svs\n");
+      LocationValue* lv = (LocationValue *)sv;
+      Location loc = lv->location();
+      intptr_t *oop_ptr;
+      intptr_t *sp_base = _fr.unextended_sp();
+      intptr_t *sp_top = sp_base + _fr.cb()->frame_size();
+      if (loc.is_stack() && (loc.type() == Location::oop)) {
+        address value_addr = ((address)sp_base) + loc.stack_offset();
+        oop val = *(oop *)value_addr;
+        oop_ptr = cast_from_oop<intptr_t *>(val);
+      } else if (loc.is_register() && (loc.type() == Location::oop)) {
+        address value_addr = register_map()->location(VMRegImpl::as_VMReg(loc.register_number()));
+        oop val = *(oop *)value_addr;
+        oop_ptr = cast_from_oop<intptr_t *>(val);
+      } else {
+        assert(loc.type() != Location::oop, "Can not be an oop");
+        return sv;
+      }
+      if (sp_base <= oop_ptr && oop_ptr < sp_top) {
+        ScopeValue* o_sv = match_object_to_stack_oop(oop_ptr, sp_base, objects);
+        if (o_sv != NULL) {
+          scv_list->at_put(index, o_sv);
+          sv = o_sv;
+        } else {
+          assert(false, "did not find stack oop for object on stack");
+        }
+      }
+    }
+  } else if (sv->is_object()) {
+    oop o = sv->as_ObjectValue()->value()();
+    intptr_t *sp_base = _fr.unextended_sp();
+    intptr_t *sp_top = sp_base + _fr.cb()->frame_size();
+    intptr_t *oop_ptr = cast_from_oop<intptr_t *>(o);
+    if (sp_base <= oop_ptr && oop_ptr < sp_top) {
+      ScopeValue* o_sv = match_object_to_stack_oop(oop_ptr, sp_base, objects);
+      if (o_sv != NULL) {
+        assert(sv == o_sv, "Objects need to match");
+        sv = o_sv;
+      } else {
+        assert(false, "did not find stack oop for object on stack");
+      }
+    }
+    assert(oopDesc::is_oop_or_null(sv->as_ObjectValue()->value()()), "needs to be an oop");
+  }
+  return sv;
 }
 
 

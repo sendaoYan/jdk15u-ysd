@@ -67,7 +67,11 @@ NOT_PRODUCT(cflags(IGVPrintLevel,       intx, PrintIdealGraphLevel, IGVPrintLeve
     cflags(Vectorize,               bool, false, Vectorize) \
     cflags(VectorizeDebug,          uintx, 0, VectorizeDebug) \
     cflags(CloneMapDebug,           bool, false, CloneMapDebug) \
-    cflags(MaxNodeLimit,            intx, MaxNodeLimit, MaxNodeLimit)
+    cflags(MaxNodeLimit,            intx, MaxNodeLimit, MaxNodeLimit) \
+NOT_PRODUCT(cflags(PrintEscapeAnalysis,       bool, PrintEscapeAnalysis, PrintEscapeAnalysis)) \
+NOT_PRODUCT(cflags(PrintEliminateAllocations, bool, PrintEliminateAllocations, PrintEliminateAllocations)) \
+    cflags(UseStackAllocation,                bool, UseStackAllocation, UseStackAllocation) \
+NOT_PRODUCT(cflags(PrintStackAllocation,      bool, PrintStackAllocation, PrintStackAllocation))
 #else
   #define compilerdirectives_c2_flags(cflags)
 #endif

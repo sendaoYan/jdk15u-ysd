@@ -259,7 +259,7 @@ class Compile : public Phase {
   int                   _max_inline_size;       // Max inline size for this compilation
   int                   _freq_inline_size;      // Max hot method inline size for this compilation
   int                   _fixed_slots;           // count of frame slots not allocated by the register
-                                                // allocator i.e. locks, original deopt pc, etc.
+                                                // allocator i.e. locks, original deopt pc, stack allocated objects, etc.
   uintx                 _max_node_limit;        // Max unique node count during a single compilation.
 
   int                   _major_progress;        // Count of something big happening
@@ -300,6 +300,10 @@ class Compile : public Phase {
   RTMState              _rtm_state;             // State of Restricted Transactional Memory usage
   int                   _loop_opts_cnt;         // loop opts round
   bool                  _clinit_barrier_on_entry; // True if clinit barrier is needed on nmethod entry
+  int                   _stack_allocated_slots; // count of frame slots potentially taken by stack allocated objects.
+                                                // Going over the limit disables stack allocation of objects pointing
+                                                // to other stack allocated objects.
+  bool                  _fail_stack_allocation_with_references;
 
   // Compilation environment.
   Arena                 _comp_arena;            // Arena with lifetime equivalent to Compile
@@ -507,7 +511,8 @@ class Compile : public Phase {
   /** Do aggressive boxing elimination. */
   bool              aggressive_unboxing() const { return _eliminate_boxing && AggressiveUnboxing; }
   bool              save_argument_registers() const { return _save_argument_registers; }
-
+  /** Do stack allocation */
+  bool              do_stack_allocation() const { return UseStackAllocation || _directive->UseStackAllocationOption; }
 
   // Other fixed compilation parameters.
   ciMethod*         method() const              { return _method; }
@@ -593,6 +598,10 @@ class Compile : public Phase {
   void          set_max_node_limit(uint n)       { _max_node_limit = n; }
   bool              clinit_barrier_on_entry()       { return _clinit_barrier_on_entry; }
   void          set_clinit_barrier_on_entry(bool z) { _clinit_barrier_on_entry = z; }
+  int               stack_allocated_slots() const { assert(_stack_allocated_slots >= 0, ""); return _stack_allocated_slots; }
+  void          set_stack_allocated_slots(int n)  { _stack_allocated_slots = n; }
+  bool               fail_stack_allocation_with_references() const { return _fail_stack_allocation_with_references; }
+  void          set_fail_stack_allocation_with_references(bool b)  { _fail_stack_allocation_with_references = b; }
 
   // check the CompilerOracle for special behaviours for this compile
   bool          method_has_option(const char * option) {

@@ -494,6 +494,7 @@ class SafePointScalarObjectNode: public TypeNode {
                      // states of the scalarized object fields are collected.
                      // It is relative to the last (youngest) jvms->_scloff.
   uint _n_fields;    // Number of non-static fields of the scalarized object.
+  bool _is_stack_allocated;
   DEBUG_ONLY(AllocateNode* _alloc;)
 
   virtual uint hash() const ; // { return NO_HASH; }
@@ -518,6 +519,9 @@ public:
     return jvms->scloff() + _first_index;
   }
   uint n_fields()    const { return _n_fields; }
+
+  void set_stack_allocated(bool v) { _is_stack_allocated = true; }
+  bool stack_allocated() { return _is_stack_allocated; }
 
 #ifdef ASSERT
   AllocateNode* alloc() const { return _alloc; }
@@ -639,6 +643,7 @@ public:
   virtual uint match_edge(uint idx) const;
 
   bool is_call_to_arraycopystub() const;
+  bool is_call_to_osr_migration_end() const;
 
 #ifndef PRODUCT
   virtual void        dump_req(outputStream *st = tty) const;
@@ -841,6 +846,9 @@ public:
     ParmLimit
   };
 
+  // Maximum object size considered for stack allocation
+  static const int StackAllocSizeLimit = 0x100;
+
   static const TypeFunc* alloc_type(const Type* t) {
     const Type** fields = TypeTuple::fields(ParmLimit - TypeFunc::Parms);
     fields[AllocSize]   = TypeInt::POS;
@@ -862,6 +870,8 @@ public:
   // Result of Escape Analysis
   bool _is_scalar_replaceable;
   bool _is_non_escaping;
+  bool _is_stack_allocateable;
+  bool _is_referenced_stack_allocation;
   // True when MemBar for new is redundant with MemBar at initialzer exit
   bool _is_allocation_MemBar_redundant;
 

@@ -177,7 +177,7 @@ int Block::is_Empty() const {
   // Ideal nodes are allowable in empty blocks: skip them  Only MachNodes
   // turn directly into code, because only MachNodes have non-trivial
   // emit() functions.
-  while ((end_idx > 0) && !get_node(end_idx)->is_Mach()) {
+  while ((end_idx > 0) && !(get_node(end_idx)->is_Mach() || get_node(end_idx)->is_BoxLock())) {
     end_idx--;
   }
 

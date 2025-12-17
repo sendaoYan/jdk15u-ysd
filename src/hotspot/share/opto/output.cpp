@@ -759,14 +759,24 @@ void PhaseOutput::FillLocArray( int idx, MachSafePointNode* sfpt, Node *local,
       ciKlass* cik = t->is_oopptr()->klass();
       assert(cik->is_instance_klass() ||
              cik->is_array_klass(), "Not supported allocation.");
-      sv = new ObjectValue(spobj->_idx,
+      if (spobj->stack_allocated()) {
+        Node *box_lock = spobj->in(1);
+        assert(box_lock != NULL, "Need to have a box lock");
+        sv = new StackObjectValue(spobj->_idx,
+                            new ConstantOopWriteValue(cik->java_mirror()->constant_encoding()),
+                            Location::new_stk_loc(Location::oop, C->regalloc()->reg2offset(BoxLockNode::reg(box_lock))),
+                            new ConstantIntValue(spobj->n_fields()));
+        set_sv_for_object_node(objs, sv);
+      } else {
+        sv = new ObjectValue(spobj->_idx,
                            new ConstantOopWriteValue(cik->java_mirror()->constant_encoding()));
-      set_sv_for_object_node(objs, sv);
+        set_sv_for_object_node(objs, sv);
 
-      uint first_ind = spobj->first_index(sfpt->jvms());
-      for (uint i = 0; i < spobj->n_fields(); i++) {
-        Node* fld_node = sfpt->in(first_ind+i);
-        (void)FillLocArray(sv->field_values()->length(), sfpt, fld_node, sv->field_values(), objs);
+        uint first_ind = spobj->first_index(sfpt->jvms());
+        for (uint i = 0; i < spobj->n_fields(); i++) {
+          Node* fld_node = sfpt->in(first_ind+i);
+          (void)FillLocArray(sv->field_values()->length(), sfpt, fld_node, sv->field_values(), objs);
+        }
       }
     }
     array->append(sv);
@@ -1010,6 +1020,7 @@ void PhaseOutput::Process_OopMap_Node(MachNode *mach, int current_offset) {
       // Grab the node that defines this monitor
       Node* box_node = sfn->monitor_box(jvms, idx);
       Node* obj_node = sfn->monitor_obj(jvms, idx);
+      bool eliminated = (box_node->is_BoxLock() && box_node->as_BoxLock()->is_eliminated());
 
       // Create ScopeValue for object
       ScopeValue *scval = NULL;
@@ -1022,14 +1033,26 @@ void PhaseOutput::Process_OopMap_Node(MachNode *mach, int current_offset) {
           ciKlass* cik = t->is_oopptr()->klass();
           assert(cik->is_instance_klass() ||
                  cik->is_array_klass(), "Not supported allocation.");
-          ObjectValue* sv = new ObjectValue(spobj->_idx,
-                                            new ConstantOopWriteValue(cik->java_mirror()->constant_encoding()));
-          PhaseOutput::set_sv_for_object_node(objs, sv);
+          ObjectValue* sv = NULL;
+          if (spobj->stack_allocated()) {
+            Node *box_lock = spobj->in(1);
+            assert(box_lock != NULL, "Need to have a box lock");
+            assert(eliminated, "monitor has to be eliminated for stack allocation");
+            sv = new StackObjectValue(spobj->_idx,
+                                new ConstantOopWriteValue(cik->java_mirror()->constant_encoding()),
+                                Location::new_stk_loc(Location::oop, C->regalloc()->reg2offset(BoxLockNode::reg(box_lock))),
+                                new ConstantIntValue(spobj->n_fields()));
+            set_sv_for_object_node(objs, sv);
+          } else {
+            sv = new ObjectValue(spobj->_idx,
+                              new ConstantOopWriteValue(cik->java_mirror()->constant_encoding()));
+            set_sv_for_object_node(objs, sv);
 
-          uint first_ind = spobj->first_index(youngest_jvms);
-          for (uint i = 0; i < spobj->n_fields(); i++) {
-            Node* fld_node = sfn->in(first_ind+i);
-            (void)FillLocArray(sv->field_values()->length(), sfn, fld_node, sv->field_values(), objs);
+            uint first_ind = spobj->first_index(youngest_jvms);
+            for (uint i = 0; i < spobj->n_fields(); i++) {
+              Node* fld_node = sfn->in(first_ind+i);
+              (void)FillLocArray(sv->field_values()->length(), sfn, fld_node, sv->field_values(), objs);
+            }
           }
           scval = sv;
         }
@@ -1047,10 +1070,30 @@ void PhaseOutput::Process_OopMap_Node(MachNode *mach, int current_offset) {
 
       OptoReg::Name box_reg = BoxLockNode::reg(box_node);
       Location basic_lock = Location::new_stk_loc(Location::normal,C->regalloc()->reg2offset(box_reg));
-      bool eliminated = (box_node->is_BoxLock() && box_node->as_BoxLock()->is_eliminated());
       monarray->append(new MonitorValue(scval, basic_lock, eliminated));
     }
 
+    for (idx = 0; idx < jvms->scl_size(); idx++ ) {
+      Node* obj_node = sfn->scalar(jvms, idx);
+
+      if (obj_node->is_SafePointScalarObject()) {
+        SafePointScalarObjectNode* spobj = obj_node->as_SafePointScalarObject();
+        if (sv_for_node_id(objs, spobj->_idx) == NULL) {
+          const Type *t = spobj->bottom_type();
+          ciKlass* cik = t->is_oopptr()->klass();
+          assert(cik->is_instance_klass() ||
+                  cik->is_array_klass(), "Not supported allocation.");
+          assert(spobj->stack_allocated(), "has to be stack allocated");
+          Node *box_lock = spobj->in(1);
+          assert(box_lock != NULL, "Need to have a box lock");
+          StackObjectValue* sv = new StackObjectValue(spobj->_idx,
+                                            new ConstantOopWriteValue(cik->java_mirror()->constant_encoding()),
+                                            Location::new_stk_loc(Location::oop, C->regalloc()->reg2offset(BoxLockNode::reg(box_lock))),
+                                            new ConstantIntValue(spobj->n_fields()));
+          set_sv_for_object_node(objs, sv);
+        }
+      }
+    }
     // We dump the object pool first, since deoptimization reads it in first.
     C->debug_info()->dump_object_pool(objs);
 
@@ -1273,6 +1316,13 @@ CodeBuffer* PhaseOutput::init_buffer() {
   // fill in the nop array for bundling computations
   MachNode *_nop_list[Bundle::_nop_count];
   Bundle::initialize_nops(_nop_list);
+
+  // if we are using stack allocation enable the runtime part
+  // stack allocation can be enabled selectively via compiler directive
+  // so we need to enable the runtime part
+  if (!UseStackAllocationRuntime && C->do_stack_allocation()) {
+    FLAG_SET_ERGO(UseStackAllocationRuntime, true);
+  }
 
   return cb;
 }
